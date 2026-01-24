@@ -1,5 +1,8 @@
-use std::{io::{self, Write}, thread::sleep, time::Duration, process::ExitCode};
+use std::{io::{self, Write}, process::ExitCode};
 use nix::errno::Errno;
+use termion::color;
+
+use crate::status::ShellError;
 mod exec;
 mod parse;
 mod status;
@@ -8,11 +11,14 @@ fn main() -> ExitCode {
     let mut return_code: Option<i32> = None;
     loop {
         match return_code {
-            Some(val) => print!("[{}]> ", val),
+            Some(val) => print!("[{}{}{}]> ", color::Fg(color::LightRed), val, color::Fg(color::Reset)),
             None => print!("> ")
         }
         io::stdout().flush().unwrap();
         let input = parse::parse_input();
+        if input.trim().is_empty() {
+            continue;
+        }
         let args = parse::split_input(&input);
         match exec::execute(args) {
             Ok(code) => {
@@ -28,19 +34,17 @@ fn main() -> ExitCode {
             }
             Err(val) => {
                 match val {
-                    status::ShellError::Execv(err) => {
-                        match err {
-                            Errno::ENOENT => {
-                                println!("executable not found on PATH");
-                                return_code = Some(127);
-                            }
+                    ShellError::IO(error) => {
+                        match error {
+                            Errno::ENOENT => println!("specified dir doesn't exit"),
+                            Errno::ENOTDIR => println!("file exists, but isn't a dir"),
                             _ => ()
                         }
                     }
-                    _ => ()
+                    ShellError::Fork => todo!()
                 }
+                return_code = Some(1);
             }
         }
-        sleep(Duration::from_millis(1));
     }
 }

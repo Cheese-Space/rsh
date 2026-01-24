@@ -2,8 +2,7 @@ use nix::sys::signal::Signal;
 pub type ShellResult = Result<Returns, ShellError>;
 pub enum ShellError {
     Fork,
-    Execv(nix::errno::Errno),
-    IO
+    IO(nix::errno::Errno)
 }
 pub enum Returns {
     Code(Option<i32>),
