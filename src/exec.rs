@@ -18,22 +18,29 @@ fn exec_extern(arguments: Vec<CString>) -> status::ShellResult {
                 match waitpid(child, None).unwrap() {
                     WaitStatus::Exited(_, code) => {
                         if code == 0 {
-                            Ok(status::Returns::Code(None))
+                            Ok(status::Returns::Code(status::ReturnCode(0)))
                         }
                         else {
-                            Ok(status::Returns::Code(Some(code)))
+                            Ok(status::Returns::Code(status::ReturnCode(code)))
                         }
                     },
                     WaitStatus::Signaled(_, signal, _) => Ok(status::Returns::ShellSignal(signal)),
-                    _ => Ok(status::Returns::Code(None))
+                    _ => Ok(status::Returns::Code(status::ReturnCode(0)))
                 }
 
             }
             Ok(ForkResult::Child) => {
                 match execvp(&arguments[0], &arguments) {
-                    Err(_) => {
-                        nix::libc::puts(CString::new("executable not found on PATH").unwrap().as_ptr());
-                        nix::libc::exit(127);
+                    Ok(_) => unreachable!(),
+                    Err(error) => {
+                        if let nix::errno::Errno::ENOENT = error {
+                            println!("file not found on PATH");
+                            nix::libc::exit(127);
+                        }
+                        else {
+                            println!("{}", error);
+                            nix::libc::exit(1);
+                        }
                     }
                 }
             }

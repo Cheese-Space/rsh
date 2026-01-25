@@ -1,19 +1,12 @@
 use std::{io::{self, Write}, process::ExitCode};
-use nix::errno::Errno;
-use termion::color;
-
-use crate::status::ShellError;
 mod exec;
 mod parse;
 mod status;
 mod builtin;
 fn main() -> ExitCode {
-    let mut return_code: Option<i32> = None;
+    let mut return_code = status::ReturnCode(0);
     loop {
-        match return_code {
-            Some(val) => print!("[{}{}{}]> ", color::Fg(color::LightRed), val, color::Fg(color::Reset)),
-            None => print!("> ")
-        }
+        print!("{}", return_code);
         io::stdout().flush().unwrap();
         let input = parse::parse_input();
         if input.trim().is_empty() {
@@ -33,17 +26,8 @@ fn main() -> ExitCode {
                 }
             }
             Err(val) => {
-                match val {
-                    ShellError::IO(error) => {
-                        match error {
-                            Errno::ENOENT => println!("specified dir doesn't exit"),
-                            Errno::ENOTDIR => println!("file exists, but isn't a dir"),
-                            _ => ()
-                        }
-                    }
-                    ShellError::Fork => todo!()
-                }
-                return_code = Some(1);
+                println!("{}", val);
+                status::ReturnCode(1);
             }
         }
     }
