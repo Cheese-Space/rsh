@@ -1,4 +1,3 @@
-use crate::builtin::cd;
 use crate::status;
 use crate::builtin;
 use std::ffi::CString;
@@ -46,7 +45,7 @@ fn exec_intern(func: &str, args: Vec<CString>) -> status::ShellResult {
     match func {
         "exit" => Ok(builtin::exit()),
         "ver" => Ok(builtin::version()),
-        "cd" => cd(args[1].as_c_str().to_str().unwrap()),
+        "cd" => builtin::cd(args[1].as_c_str().to_str().unwrap()),
         _ => unreachable!()
     }
 }
