@@ -11,7 +11,7 @@ fn main() -> ExitCode {
     let hostname = hostname.to_str().unwrap();
     let mut return_code = status::ReturnCode(0);
     loop {
-        print!("{}@{}{}", username, hostname, return_code);
+        print!("{}@{} {}", username, hostname, return_code);
         io::stdout().flush().unwrap();
         let input = parse::parse_input();
         if input.trim().is_empty() {
