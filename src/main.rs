@@ -1,12 +1,17 @@
 use std::{io::{self, Write}, process::ExitCode};
+use nix::unistd::{User, getuid, gethostname};
 mod exec;
 mod parse;
 mod status;
 mod builtin;
 fn main() -> ExitCode {
+    let user_info = User::from_uid(getuid()).unwrap().unwrap();
+    let username = user_info.name;
+    let hostname = gethostname().unwrap();
+    let hostname = hostname.to_str().unwrap();
     let mut return_code = status::ReturnCode(0);
     loop {
-        print!("{}", return_code);
+        print!("{}@{}{}", username, hostname, return_code);
         io::stdout().flush().unwrap();
         let input = parse::parse_input();
         if input.trim().is_empty() {
@@ -27,7 +32,7 @@ fn main() -> ExitCode {
             }
             Err(val) => {
                 println!("{}", val);
-                status::ReturnCode(1);
+                return_code = status::ReturnCode(1);
             }
         }
     }
