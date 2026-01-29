@@ -46,7 +46,13 @@ fn exec_intern(func: &str, args: Vec<CString>) -> status::ShellResult {
     match func {
         "exit" => Ok(builtin::exit()),
         "ver" => Ok(builtin::version()),
-        "cd" => builtin::cd(args[1].to_str().unwrap()),
+        "cd" => {
+            if args.len() < 2 {
+                println!("error: no input provided!");
+                return Ok(status::Returns::Code(1));
+            }
+            builtin::cd(args[1].to_str().unwrap())
+        }
         _ => unreachable!()
     }
 }
