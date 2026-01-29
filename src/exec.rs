@@ -19,10 +19,10 @@ fn exec_extern(arguments: Vec<CString>) -> status::ShellResult {
             Ok(ForkResult::Parent { child }) => {
                 match waitpid(child, None).unwrap() {
                     WaitStatus::Exited(_, code) => {
-                        Ok(status::Returns::Code(status::ReturnCode(code)))
+                        Ok(status::Returns::Code(code))
                     },
                     WaitStatus::Signaled(_, signal, _) => Ok(status::Returns::ShellSignal(signal)),
-                    _ => Ok(status::Returns::Code(status::ReturnCode(0)))
+                    _ => Ok(status::Returns::Code(0))
                 }
             }
             Ok(ForkResult::Child) => {
