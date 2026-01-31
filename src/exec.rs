@@ -38,7 +38,7 @@ fn exec_extern(arguments: Vec<CString>) -> status::ShellResult {
                     }
                 }
             }
-            Err(_) => Err(status::ShellError::Fork)
+            Err(error) => Err(status::ShellError::Fork(error))
         }
     }
 }
