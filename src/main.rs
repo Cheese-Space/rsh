@@ -1,4 +1,4 @@
-use std::{io::{self, Write}, process::ExitCode};
+use std::{io::{self, Write}, process::ExitCode, path::Path};
 use nix::unistd::{User, getuid, gethostname};
 use termion::color;
 mod exec;
@@ -7,17 +7,11 @@ mod status;
 mod builtin;
 mod config;
 fn main() -> ExitCode {
-    let mut ucolor = String::new();
-    let mut ecolor = String::new();
-    let conf = config::Conf::make_conf(true);
-    match conf.usercolor {
-        0 => ucolor.push_str(&color::Fg(color::LightGreen).to_string()),
-        _ => ()
+    let path = Path::new("/usr/local/etc/rsh.json");
+    if !path.exists() {
+        config::Conf::make_conf(true);
     }
-    match conf.errorcolor {
-        0 => ecolor.push_str(&color::Fg(color::LightRed).to_string()),
-        _ => ()
-    }
+    let conf = config::Conf::read_conf();
     let user_info = User::from_uid(getuid()).unwrap().unwrap();
     let username = user_info.name;
     let hostname = gethostname().unwrap();
@@ -25,10 +19,10 @@ fn main() -> ExitCode {
     let mut return_code = 0;
     loop {
         if return_code == 0 {
-            print!("{}{}{}@{} {} ", ucolor, username, color::Fg(color::Reset), hostname, conf.separator);
+            print!("{}{}{}@{} {} ", conf.usercolor, username, color::Fg(color::Reset), hostname, conf.separator);
         }
         else {
-            print!("{}{}{}@{} [{}{}{}] {} ", ucolor, username, color::Fg(color::Reset), hostname, ecolor, return_code, color::Fg(color::Reset), conf.separator);
+            print!("{}{}{}@{} [{}{}{}] {} ", conf.usercolor, username, color::Fg(color::Reset), hostname, conf.errorcolor, return_code, color::Fg(color::Reset), conf.separator);
         }
         io::stdout().flush().unwrap();
         let input = parse::parse_input();
