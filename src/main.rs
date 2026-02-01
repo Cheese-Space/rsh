@@ -43,7 +43,7 @@ fn main() -> ExitCode {
                 }
             }
             Err(val) => {
-                println!("{}", val);
+                eprintln!("{}", val);
                 return_code = 1;
             }
         }
