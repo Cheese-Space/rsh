@@ -47,7 +47,7 @@ impl Conf {
         let contents = Self {
             usercolor: ucolor,
             errorcolor: ecolor,
-            separator: separator
+            separator
         };
         let contents = serde_json::to_string_pretty(&contents).unwrap();
         let mut file = fs::File::create("/usr/local/etc/rsh.json").unwrap();

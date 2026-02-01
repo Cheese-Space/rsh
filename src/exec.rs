@@ -2,18 +2,26 @@ use crate::status;
 use crate::builtin;
 use std::ffi::CString;
 use std::process::exit;
+use std::io;
 use nix::errno::Errno;
-use nix::{sys::wait::{waitpid, WaitStatus}, unistd::{execvp, fork, ForkResult}};
+use nix::{sys::{wait::{waitpid, WaitStatus}, stat::Mode}, unistd::{execvp, fork, ForkResult, dup, dup2_stdout}, fcntl};
 const BUILTIN: [&str; 4] = ["exit", "ver", "cd", "mkconf"];
 pub fn execute(arguments: Vec<CString>) -> status::ShellResult {
     for i in BUILTIN {
         if i == arguments[0].to_str().unwrap() {
-            return exec_intern(i, arguments);
+            return exec_intern(i, &arguments);
         }
     }
-    exec_extern(arguments)
+    for (i, j) in arguments.iter().enumerate() {
+        if *j == CString::new(">").unwrap() {
+            let filename = arguments[i+1].to_str().unwrap();
+            let arguments = &arguments[0..i];
+            return exec_redirect(arguments, filename);
+        }
+    }
+    exec_extern(&arguments)
 }
-fn exec_extern(arguments: Vec<CString>) -> status::ShellResult {
+fn exec_extern(arguments: &[CString]) -> status::ShellResult {
     unsafe { // note that all libc functions (and fork) are 'unsafe', but won't cause undefined behavior in this code
         match fork() {
             Ok(ForkResult::Parent { child }) => {
@@ -42,7 +50,7 @@ fn exec_extern(arguments: Vec<CString>) -> status::ShellResult {
         }
     }
 }
-fn exec_intern(func: &str, args: Vec<CString>) -> status::ShellResult {
+fn exec_intern(func: &str, args:&[CString]) -> status::ShellResult {
     match func {
         "exit" => Ok(builtin::exit()),
         "ver" => Ok(builtin::version()),
@@ -59,4 +67,16 @@ fn exec_intern(func: &str, args: Vec<CString>) -> status::ShellResult {
         }
         _ => unreachable!()
     }
+}
+fn exec_redirect(arguments: &[CString], filename: &str) -> status::ShellResult {
+    let stdout = io::stdout();
+    let saved_stdout = dup(&stdout).unwrap();
+    let file = match fcntl::open(filename, fcntl::OFlag::O_WRONLY | fcntl::OFlag::O_CREAT | fcntl::OFlag::O_TRUNC | fcntl::OFlag::O_CLOEXEC, Mode::S_IWUSR | Mode::S_IRUSR) {
+        Ok(f) => f,
+        Err(error) => return Err(status::ShellError::IO(error))
+    };
+    dup2_stdout(file).unwrap();
+    let res = exec_extern(arguments);
+    dup2_stdout(saved_stdout).unwrap();
+    res
 }
