@@ -16,7 +16,12 @@ pub fn execute(arguments: Vec<CString>) -> status::ShellResult {
         if *j == CString::new(">").unwrap() {
             let filename = arguments[i+1].to_str().unwrap();
             let arguments = &arguments[0..i];
-            return exec_redirect(arguments, filename);
+            return exec_redirect(arguments, filename, true);
+        }
+        else if *j == CString::new(">>").unwrap() {
+            let filename = arguments[i+1].to_str().unwrap();
+            let arguments = &arguments[0..i];
+            return exec_redirect(arguments, filename, false);
         }
     }
     exec_extern(&arguments)
@@ -68,10 +73,14 @@ fn exec_intern(func: &str, args:&[CString]) -> status::ShellResult {
         _ => unreachable!()
     }
 }
-fn exec_redirect(arguments: &[CString], filename: &str) -> status::ShellResult {
+fn exec_redirect(arguments: &[CString], filename: &str, overwrite: bool) -> status::ShellResult {
     let stdout = io::stdout();
     let saved_stdout = dup(&stdout).unwrap();
-    let file = match fcntl::open(filename, fcntl::OFlag::O_WRONLY | fcntl::OFlag::O_CREAT | fcntl::OFlag::O_TRUNC | fcntl::OFlag::O_CLOEXEC, Mode::S_IWUSR | Mode::S_IRUSR) {
+    let mut flags = fcntl::OFlag::O_WRONLY | fcntl::OFlag::O_CLOEXEC | fcntl::OFlag::O_APPEND;
+    if overwrite {
+        flags = fcntl::OFlag::O_WRONLY | fcntl::OFlag::O_CREAT | fcntl::OFlag::O_TRUNC | fcntl::OFlag::O_CLOEXEC;
+    }
+    let file = match fcntl::open(filename, flags, Mode::S_IWUSR | Mode::S_IRUSR) {
         Ok(f) => f,
         Err(error) => return Err(status::ShellError::IO(error))
     };
