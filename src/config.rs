@@ -47,7 +47,7 @@ impl Conf {
         let contents = Self {
             usercolor: ucolor,
             errorcolor: ecolor,
-            separator: separator
+            separator
         };
         let contents = serde_json::to_string_pretty(&contents).unwrap();
         let mut file = fs::File::create("/usr/local/etc/rsh.json").unwrap();
@@ -61,5 +61,14 @@ impl Conf {
     pub fn read_conf() -> Self {
         let contents: Conf = serde_json::from_str(&fs::read_to_string("/usr/local/etc/rsh.json").unwrap()).unwrap();
         contents
+    }
+}
+impl Default for Conf {
+    fn default() -> Self {
+        Self {
+            usercolor: color::Fg(color::LightGreen).to_string(),
+            errorcolor: color::Fg(color::LightRed).to_string(),
+            separator: "->".to_string()
+        }
     }
 }

@@ -15,7 +15,7 @@ fn main() -> ExitCode {
     let user_info = User::from_uid(getuid()).unwrap().unwrap();
     let username = user_info.name;
     let hostname = gethostname().unwrap();
-    let hostname = hostname.to_str().unwrap();
+    let hostname = hostname.into_string().unwrap();
     let mut return_code = 0;
     loop {
         if return_code == 0 {
@@ -43,7 +43,7 @@ fn main() -> ExitCode {
                 }
             }
             Err(val) => {
-                println!("{}", val);
+                eprintln!("{}", val);
                 return_code = 1;
             }
         }
