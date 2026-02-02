@@ -63,3 +63,12 @@ impl Conf {
         contents
     }
 }
+impl Default for Conf {
+    fn default() -> Self {
+        Self {
+            usercolor: color::Fg(color::LightGreen).to_string(),
+            errorcolor: color::Fg(color::LightRed).to_string(),
+            separator: "->".to_string()
+        }
+    }
+}
