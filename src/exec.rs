@@ -4,7 +4,8 @@ use std::ffi::CString;
 use std::process::exit;
 use std::io;
 use nix::errno::Errno;
-use nix::{sys::{wait::{waitpid, WaitStatus}, stat::Mode}, unistd::{execvp, fork, ForkResult, dup, dup2_stdout, dup2_stdin}, fcntl};
+use nix::unistd::pipe;
+use nix::{sys::{wait::{waitpid, WaitStatus}, stat::Mode}, unistd::{execvp, fork, ForkResult, dup, dup2_stdout, dup2_stdin, read}, fcntl};
 const BUILTIN: [&str; 4] = ["exit", "ver", "cd", "mkconf"];
 pub fn execute(arguments: Vec<CString>) -> status::ShellResult {
     for i in BUILTIN {
@@ -13,20 +14,28 @@ pub fn execute(arguments: Vec<CString>) -> status::ShellResult {
         }
     }
     for (i, j) in arguments.iter().enumerate() {
-        if j.as_bytes() == b">" {
-            let filename = arguments[i+1].to_str().unwrap();
-            let arguments = &arguments[0..i];
-            return exec_redirect(arguments, filename, true);
-        }
-        else if j.as_bytes() == b">>" {
-            let filename = arguments[i+1].to_str().unwrap();
-            let arguments = &arguments[0..i];
-            return exec_redirect(arguments, filename, false);
-        }
-        else if j.as_bytes() == b"<" {
-             let filename = arguments[i+1].to_str().unwrap();
-            let arguments = &arguments[0..i];
-            return exec_file_as_stdin(arguments, filename);
+        match j.as_bytes() {
+            b">" => {
+                let filename = arguments[i+1].to_str().unwrap();
+                let arguments = &arguments[0..i];
+                return exec_redirect(arguments, filename, true);
+            }
+            b">>" => {
+                let filename = arguments[i+1].to_str().unwrap();
+                let arguments = &arguments[0..i];
+                return exec_redirect(arguments, filename, false);
+            }
+            b"<" => {
+                let filename = arguments[i+1].to_str().unwrap();
+                let arguments = &arguments[0..i];
+                return exec_file_as_stdin(arguments, filename);
+            }
+            b"|" => {
+                let args1 = &arguments[..i];
+                let args2 = &arguments[i+1];
+                return exec_pipe(args1, args2);
+            }
+            _ => ()
         }
     }
     exec_extern(&arguments)
@@ -105,4 +114,33 @@ fn exec_file_as_stdin(arguments: &[CString], filename: &str) -> status::ShellRes
     let res = exec_extern(arguments);
     dup2_stdin(saved_stdin).expect("couldn't restore stdin!");
     res
+}
+fn exec_pipe(args1: &[CString], args2: &CString) -> status::ShellResult {
+    let saved_stdout = dup(io::stdout()).unwrap();
+    let mut n = 0;
+    let mut buff = [0u8; 4096];
+    let (read_fd, write_fd) = pipe().unwrap();
+    match unsafe {fork()} {
+        Ok(ForkResult::Parent { child }) => {
+            drop(write_fd);
+            waitpid(child, None).unwrap();
+            n = read(read_fd, &mut buff).unwrap();
+        }
+        Ok(ForkResult::Child) => {
+            drop(read_fd);
+            dup2_stdout(write_fd).unwrap();
+            match execvp(&args1[0], &args1) {
+                Err(error) => {
+                    eprintln!("error: {}", error.desc());
+                    exit(1);
+                }
+            }
+        }
+        Err(error) => return Err(status::ShellError::Fork(error))
+    }
+    dup2_stdout(saved_stdout).expect("couldn't restore stdout!");
+    let str_buff = std::str::from_utf8(&buff[..n]).unwrap();
+    let unparsed = format!("{} {}", args2.to_str().unwrap(), str_buff);
+    let parsed = crate::parse::split_input(&unparsed);
+    exec_extern(&parsed)
 }
