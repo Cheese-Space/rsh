@@ -4,7 +4,7 @@ use std::ffi::CString;
 use std::process::exit;
 use std::io;
 use nix::errno::Errno;
-use nix::{sys::{wait::{waitpid, WaitStatus}, stat::Mode}, unistd::{execvp, fork, ForkResult, dup, dup2_stdout}, fcntl};
+use nix::{sys::{wait::{waitpid, WaitStatus}, stat::Mode}, unistd::{execvp, fork, ForkResult, dup, dup2_stdout, dup2_stdin}, fcntl};
 const BUILTIN: [&str; 4] = ["exit", "ver", "cd", "mkconf"];
 pub fn execute(arguments: Vec<CString>) -> status::ShellResult {
     for i in BUILTIN {
@@ -13,15 +13,20 @@ pub fn execute(arguments: Vec<CString>) -> status::ShellResult {
         }
     }
     for (i, j) in arguments.iter().enumerate() {
-        if *j == CString::new(">").unwrap() {
+        if j.as_bytes() == b">" {
             let filename = arguments[i+1].to_str().unwrap();
             let arguments = &arguments[0..i];
             return exec_redirect(arguments, filename, true);
         }
-        else if *j == CString::new(">>").unwrap() {
+        else if j.as_bytes() == b">>" {
             let filename = arguments[i+1].to_str().unwrap();
             let arguments = &arguments[0..i];
             return exec_redirect(arguments, filename, false);
+        }
+        else if j.as_bytes() == b"<" {
+             let filename = arguments[i+1].to_str().unwrap();
+            let arguments = &arguments[0..i];
+            return exec_file_as_stdin(arguments, filename);
         }
     }
     exec_extern(&arguments)
@@ -86,6 +91,18 @@ fn exec_redirect(arguments: &[CString], filename: &str, overwrite: bool) -> stat
     };
     dup2_stdout(file).unwrap();
     let res = exec_extern(arguments);
-    dup2_stdout(saved_stdout).unwrap();
+    dup2_stdout(saved_stdout).expect("couldn't restore stdout!");
+    res
+}
+fn exec_file_as_stdin(arguments: &[CString], filename: &str) -> status::ShellResult {
+    let stdin = io::stdin();
+    let saved_stdin = dup(&stdin).unwrap();
+    let file = match fcntl::open(filename, fcntl::OFlag::O_RDONLY | fcntl::OFlag::O_CLOEXEC, Mode::empty()) {
+        Ok(f) => f,
+        Err(error) => return Err(status::ShellError::IO(error))
+    };
+    dup2_stdin(file).unwrap();
+    let res = exec_extern(arguments);
+    dup2_stdin(saved_stdin).expect("couldn't restore stdin!");
     res
 }
