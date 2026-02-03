@@ -1,4 +1,4 @@
-use std::{io::{self, Write}, process::ExitCode, path::Path};
+use std::{io::{self, Write}, process::ExitCode};
 use nix::unistd::{User, getuid, gethostname};
 use termion::color;
 mod exec;
@@ -7,10 +7,6 @@ mod status;
 mod builtin;
 mod config;
 fn main() -> ExitCode {
-    let path = Path::new("/usr/local/etc/rsh.json");
-    if !path.exists() {
-        config::Conf::make_conf(true);
-    }
     let conf = config::Conf::read_conf();
     let user_info = User::from_uid(getuid()).unwrap().unwrap();
     let username = user_info.name;
