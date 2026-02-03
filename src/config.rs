@@ -8,7 +8,7 @@ pub struct Conf {
     pub separator: String
 }
 impl Conf {
-    pub fn make_conf(no_conf: bool) {
+    pub fn make_conf() {
         let mut ucolor = String::new();
         let mut ecolor = String::new();
         let mut separator = String::new();
@@ -52,14 +52,23 @@ impl Conf {
         let contents = serde_json::to_string_pretty(&contents).unwrap();
         let mut file = fs::File::create("/usr/local/etc/rsh.json").unwrap();
         file.write_all(contents.as_bytes()).unwrap();
-        if no_conf {
-            println!("setup finished!");
-            std::process::exit(0);
-        }
         println!("exit rsh for changes to take efect");
     }
     pub fn read_conf() -> Self {
-        let contents: Conf = serde_json::from_str(&fs::read_to_string("/usr/local/etc/rsh.json").unwrap()).unwrap();
+        let file = match fs::read_to_string("/usr/local/etc/rsh.json") {
+            Ok(f) => f,
+            Err(error) => {
+                eprintln!("error: {}\nusing defaults\ntip: you can make a conf using mkconf", error);
+                return Self::default();
+            }
+        };
+        let contents: Conf = match serde_json::from_str(&file) {
+            Ok(c) => c,
+            Err(error) => {
+                eprintln!("error: {}\nusing defaults\ntip: you can make a conf using mkconf", error);
+                return Self::default();
+            }
+        };
         contents
     }
 }
