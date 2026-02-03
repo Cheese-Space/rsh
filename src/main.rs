@@ -15,7 +15,13 @@ fn main() -> ExitCode {
     let user_info = User::from_uid(getuid()).unwrap().unwrap();
     let username = user_info.name;
     let hostname = gethostname().unwrap();
-    let hostname = hostname.into_string().unwrap();
+    let hostname = match hostname.into_string() {
+        Ok(s) => s,
+        Err(_) => {
+            eprintln!("error: hostname contains invalid UTF-8\nsetting hostname to: 'unknown'");
+            String::from("unknown")
+        }
+    };
     let mut return_code = 0;
     loop {
         if return_code == 0 {
