@@ -81,7 +81,7 @@ fn exec_intern(func: &str, args:&[CString]) -> status::ShellResult {
             builtin::cd(args[1].to_str().unwrap())
         }
         "mkconf" => {
-            crate::config::Conf::make_conf(false);
+            crate::config::Conf::make_conf();
             Ok(status::Returns::Code(0))
         }
         _ => unreachable!()
