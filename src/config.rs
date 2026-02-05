@@ -58,7 +58,7 @@ impl Conf {
         let file = match fs::read_to_string("/usr/local/etc/rsh.json") {
             Ok(f) => f,
             Err(error) => {
-                eprintln!("error: {}\nusing defaults\ntip: you can make a conf using mkconf", error);
+                eprintln!("error: {}\nusing defaults\ntip: you can make a conf using mkconf", nix::errno::Errno::from_raw(error.raw_os_error().unwrap()).desc());
                 return Self::default();
             }
         };
