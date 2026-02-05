@@ -41,7 +41,10 @@ pub fn execute(arguments: Vec<CString>) -> status::ShellResult {
             }
             b"|" => {
                 let args1 = &arguments[..i];
-                let args2 = &arguments[i+1];
+                let args2 = match arguments.get(i+1) {
+                    Some(s) => s,
+                    None => return Err(status::ShellError::NoArg)
+                };
                 return exec_pipe(args1, args2);
             }
             _ => ()
