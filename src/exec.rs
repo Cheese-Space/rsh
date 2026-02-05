@@ -16,17 +16,26 @@ pub fn execute(arguments: Vec<CString>) -> status::ShellResult {
     for (i, j) in arguments.iter().enumerate() {
         match j.as_bytes() {
             b">" => {
-                let filename = arguments[i+1].to_str().unwrap();
+                let filename = match arguments.get(i+1) {
+                    Some(s) => s.to_str().unwrap(),
+                    None => return Err(status::ShellError::NoArg)
+                };
                 let arguments = &arguments[0..i];
                 return exec_redirect(arguments, filename, true);
             }
             b">>" => {
-                let filename = arguments[i+1].to_str().unwrap();
+                let filename = match arguments.get(i+1) {
+                    Some(s) => s.to_str().unwrap(),
+                    None => return Err(status::ShellError::NoArg)
+                };
                 let arguments = &arguments[0..i];
                 return exec_redirect(arguments, filename, false);
             }
             b"<" => {
-                let filename = arguments[i+1].to_str().unwrap();
+                let filename = match arguments.get(i+1) {
+                    Some(s) => s.to_str().unwrap(),
+                    None => return Err(status::ShellError::NoArg)
+                };
                 let arguments = &arguments[0..i];
                 return exec_file_as_stdin(arguments, filename);
             }
@@ -75,8 +84,7 @@ fn exec_intern(func: &str, args:&[CString]) -> status::ShellResult {
         "ver" => Ok(builtin::version()),
         "cd" => {
             if args.len() < 2 {
-                eprintln!("error: no input provided!");
-                return Ok(status::Returns::Code(1));
+                return Err(status::ShellError::NoArg);
             }
             builtin::cd(args[1].to_str().unwrap())
         }
@@ -117,7 +125,7 @@ fn exec_file_as_stdin(arguments: &[CString], filename: &str) -> status::ShellRes
 }
 fn exec_pipe(args1: &[CString], args2: &CString) -> status::ShellResult {
     let saved_stdout = dup(io::stdout()).unwrap();
-    let mut n = 0;
+    let n: usize;
     let mut buff = [0u8; 4096];
     let (read_fd, write_fd) = pipe().unwrap();
     match unsafe {fork()} {
