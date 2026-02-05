@@ -149,6 +149,9 @@ fn exec_pipe(args1: &[CString], args2: &CString) -> status::ShellResult {
     dup2_stdout(saved_stdout).expect("couldn't restore stdout!");
     let str_buff = std::str::from_utf8(&buff[..n]).unwrap();
     let unparsed = format!("{} {}", args2.to_str().unwrap(), str_buff);
-    let parsed = crate::parse::split_input(&unparsed);
+    let parsed = match crate::parse::split_input(&unparsed) {
+        Ok(s) => s,
+        Err(_) => return Err(status::ShellError::CStringNullByte)
+    };
     exec_extern(&parsed)
 }

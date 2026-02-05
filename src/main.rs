@@ -30,8 +30,14 @@ fn main() -> ExitCode {
         let input = parse::parse_input();
         if input.trim().is_empty() {
             continue;
-        }
-        let args = parse::split_input(&input);
+        } 
+        let args = match parse::split_input(&input) {
+            Ok(s) => s,
+            Err(_) => {
+                eprintln!("{}", status::ShellError::CStringNullByte);
+                continue;
+            }
+        };
         match exec::execute(args) {
             Ok(code) => {
                 match code {
