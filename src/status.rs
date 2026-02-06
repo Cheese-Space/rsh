@@ -5,8 +5,8 @@ pub enum ShellError {
     IO(nix::errno::Errno),
     NoArg,
     CStringNullByte,
-    DupStdout(String),
-    DupStdin(String)
+    DupStdout(nix::errno::Errno, String),
+    DupStdin(nix::errno::Errno, String)
 }
 impl std::fmt::Display for ShellError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -15,8 +15,8 @@ impl std::fmt::Display for ShellError {
             ShellError::IO(error) => write!(f, "error: {}", error.desc()),
             ShellError::NoArg => write!(f, "error: no argument(s) provided!"),
             ShellError::CStringNullByte => write!(f, "error: null byte found before end of string"),
-            ShellError::DupStdout(filename) => write!(f, "error: failed to redirect stdout to '{}'", filename),
-            ShellError::DupStdin(filename) => write!(f, "error: failed to redirect stdin to '{}'", filename)
+            ShellError::DupStdout(error, filename) => write!(f, "error: {}\nfailed to redirect stdout to '{}'", error.desc(), filename),
+            ShellError::DupStdin(error, filename) => write!(f, "error: {}\nfailed to redirect stdin to '{}'", error.desc(), filename)
         }
     }
 }
