@@ -59,13 +59,13 @@ fn exec_extern(arguments: &[CString]) -> status::ShellResult {
                 match waitpid(child, None).unwrap() {
                     WaitStatus::Exited(_, code) => {
                         Ok(status::Returns::Code(code))
-                    },
+                    }
                     WaitStatus::Signaled(_, signal, _) => Ok(status::Returns::ShellSignal(signal)),
                     _ => Ok(status::Returns::Code(0))
                 }
             }
             Ok(ForkResult::Child) => {
-                match execvp(&arguments[0], &arguments) {
+                match execvp(&arguments[0], arguments) {
                     Err(error) => {
                         eprintln!("error: {}", error.desc());
                         if error == Errno::ENOENT {
@@ -109,7 +109,9 @@ fn exec_redirect(arguments: &[CString], filename: &str, overwrite: bool) -> stat
         Ok(f) => f,
         Err(error) => return Err(status::ShellError::IO(error))
     };
-    dup2_stdout(file).unwrap();
+    if let Err(error) = dup2_stdout(file) {
+        return Err(status::ShellError::DupStdout(error, filename.to_string()));
+    }
     let res = exec_extern(arguments);
     dup2_stdout(saved_stdout).expect("couldn't restore stdout!");
     res
@@ -121,7 +123,9 @@ fn exec_file_as_stdin(arguments: &[CString], filename: &str) -> status::ShellRes
         Ok(f) => f,
         Err(error) => return Err(status::ShellError::IO(error))
     };
-    dup2_stdin(file).unwrap();
+    if let Err(error) = dup2_stdin(file) {
+        return Err(status::ShellError::DupStdin(error, filename.to_string()));
+    }
     let res = exec_extern(arguments);
     dup2_stdin(saved_stdin).expect("couldn't restore stdin!");
     res
@@ -139,8 +143,11 @@ fn exec_pipe(args1: &[CString], args2: &CString) -> status::ShellResult {
         }
         Ok(ForkResult::Child) => {
             drop(read_fd);
-            dup2_stdout(write_fd).unwrap();
-            match execvp(&args1[0], &args1) {
+            if let Err(error) = dup2_stdout(write_fd) {
+                eprintln!("error: {}\nfailed to redirect stdout to pipe!", error);
+                exit(1);
+            }
+            match execvp(&args1[0], args1) {
                 Err(error) => {
                     eprintln!("error: {}", error.desc());
                     exit(1);
