@@ -4,7 +4,7 @@ pub fn exit() -> Returns {
     Returns::ExitSig
 }
 pub fn version() -> Returns {
-    println!("version: 0.1.0");
+    println!("version: 0.2.1");
     Returns::Code(0)
 }
 pub fn cd(dir: &str) -> ShellResult {
