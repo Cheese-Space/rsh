@@ -4,8 +4,12 @@ use std::ffi::CString;
 use std::process::exit;
 use std::io;
 use nix::errno::Errno;
+use nix::sys::signal::kill;
+use nix::unistd::Pid;
 use nix::unistd::pipe;
-use nix::{sys::{wait::{waitpid, WaitStatus}, stat::Mode}, unistd::{execvp, fork, ForkResult, dup, dup2_stdout, dup2_stdin, read}, fcntl};
+use nix::fcntl::{self};
+use nix::unistd::write;
+use nix::{sys::{wait::{waitpid, WaitStatus}, signal, stat::Mode}, unistd::{read, execvp, fork, ForkResult, dup, dup2_stdout, dup2_stdin}};
 const BUILTIN: [&str; 4] = ["exit", "ver", "cd", "mkconf"];
 pub fn execute(arguments: Vec<CString>) -> status::ShellResult {
     for i in BUILTIN {
@@ -41,10 +45,10 @@ pub fn execute(arguments: Vec<CString>) -> status::ShellResult {
             }
             b"|" => {
                 let args1 = &arguments[..i];
-                let args2 = match arguments.get(i+1) {
-                    Some(s) => s,
-                    None => return Err(status::ShellError::NoArg)
-                };
+                if let None = arguments.get(i+1) {
+                    return Err(status::ShellError::NoArg);
+                }
+                let args2 = &arguments[i+1..];
                 return exec_pipe(args1, args2);
             }
             _ => ()
@@ -53,10 +57,20 @@ pub fn execute(arguments: Vec<CString>) -> status::ShellResult {
     exec_extern(&arguments)
 }
 fn exec_extern(arguments: &[CString]) -> status::ShellResult {
+    let (e_read, e_write) = pipe().unwrap();
+    fcntl::fcntl(&e_write, fcntl::FcntlArg::F_SETFD(fcntl::FdFlag::FD_CLOEXEC)).unwrap();
     unsafe { // note that all libc functions (and fork) are 'unsafe', but won't cause undefined behavior in this code
         match fork() {
             Ok(ForkResult::Parent { child }) => {
-                match waitpid(child, None).unwrap() {
+                drop(e_write);
+                let res = waitpid(child, None).unwrap();
+                let mut buff = [0u8; 4];
+                let bytes = read(e_read, &mut buff).unwrap();
+                if bytes == 4 {
+                    let error = i32::from_ne_bytes(buff);
+                    return Err(status::ShellError::Exec(Errno::from_raw(error)));
+                }
+                match res {
                     WaitStatus::Exited(_, code) => {
                         Ok(status::Returns::Code(code))
                     }
@@ -65,15 +79,14 @@ fn exec_extern(arguments: &[CString]) -> status::ShellResult {
                 }
             }
             Ok(ForkResult::Child) => {
+                drop(e_read);
                 match execvp(&arguments[0], arguments) {
                     Err(error) => {
-                        eprintln!("error: {}", error.desc());
-                        if error == Errno::ENOENT {
-                            exit(127);
-                        }
-                        else {
-                            exit(1);
-                        }
+                        let error = error as i32;
+                        let error = error.to_ne_bytes();
+                        write(&e_write, &error).unwrap();
+                        drop(e_write);
+                        exit(1);
                     }
                 }
             }
@@ -130,38 +143,77 @@ fn exec_file_as_stdin(arguments: &[CString], filename: &str) -> status::ShellRes
     dup2_stdin(saved_stdin).expect("couldn't restore stdin!");
     res
 }
-fn exec_pipe(args1: &[CString], args2: &CString) -> status::ShellResult {
+fn exec_pipe(args1: &[CString], args2: &[CString]) -> status::ShellResult {
+    let saved_stdin = dup(io::stdin()).unwrap();
     let saved_stdout = dup(io::stdout()).unwrap();
-    let n: usize;
-    let mut buff = [0u8; 4096];
+    let (le_read, le_write) = pipe().unwrap();
+    let (re_read, re_write) = pipe().unwrap();
+    fcntl::fcntl(&le_write, fcntl::FcntlArg::F_SETFD(fcntl::FdFlag::FD_CLOEXEC)).unwrap();
+    fcntl::fcntl(&re_write, fcntl::FcntlArg::F_SETFD(fcntl::FdFlag::FD_CLOEXEC)).unwrap();
     let (read_fd, write_fd) = pipe().unwrap();
-    match unsafe {fork()} {
-        Ok(ForkResult::Parent { child }) => {
-            drop(write_fd);
-            waitpid(child, None).unwrap();
-            n = read(read_fd, &mut buff).unwrap();
-        }
+    let left_pid: Pid = match unsafe {fork()} {
         Ok(ForkResult::Child) => {
             drop(read_fd);
-            if let Err(error) = dup2_stdout(write_fd) {
-                eprintln!("error: {}\nfailed to redirect stdout to pipe!", error);
-                exit(1);
-            }
+            drop(le_read);
+            dup2_stdout(&write_fd).unwrap();
+            drop(write_fd);
+            unsafe { signal::signal(signal::Signal::SIGPIPE, signal::SigHandler::SigDfl).unwrap() };
             match execvp(&args1[0], args1) {
                 Err(error) => {
-                    eprintln!("error: {}", error.desc());
+                    let error = error as i32;
+                    let error = error.to_ne_bytes();
+                    write(&le_write, &error).unwrap();
                     exit(1);
                 }
             }
         }
+        Ok(ForkResult::Parent { child }) => child,
         Err(error) => return Err(status::ShellError::Fork(error))
-    }
-    dup2_stdout(saved_stdout).expect("couldn't restore stdout!");
-    let str_buff = std::str::from_utf8(&buff[..n]).unwrap();
-    let unparsed = format!("{} {}", args2.to_str().unwrap(), str_buff);
-    let parsed = match crate::parse::split_input(&unparsed) {
-        Ok(s) => s,
-        Err(_) => return Err(status::ShellError::CStringNullByte)
     };
-    exec_extern(&parsed)
+    let right_pid: Pid = match unsafe {fork()} {
+        Ok(ForkResult::Child) => {
+            drop(write_fd);
+            drop(re_read);
+            dup2_stdin(&read_fd).unwrap();
+            drop(read_fd);
+            unsafe { signal::signal(signal::Signal::SIGPIPE, signal::SigHandler::SigDfl).unwrap() };
+            match execvp(&args2[0], args2) {
+                Err(error) => {
+                    let error = error as i32;
+                    let error = error.to_ne_bytes();
+                    write(&re_write, &error).unwrap();
+                    exit(1);
+                }
+            }
+        }
+        Ok(ForkResult::Parent { child }) => child,
+        Err(error) => return Err(status::ShellError::Fork(error))
+    };
+    drop(read_fd);
+    drop(write_fd);
+    drop(le_write);
+    drop(re_write);
+    waitpid(left_pid, None).unwrap();
+    let mut left_buff = [0u8; 4];
+    let bytes = read(le_read, &mut left_buff).unwrap();
+    if bytes == 4 {
+        kill(right_pid, nix::sys::signal::SIGKILL).unwrap();
+        let error = i32::from_ne_bytes(left_buff);
+        return Err(status::ShellError::Exec(Errno::from_raw(error)));
+    }
+    let res = waitpid(right_pid, None).unwrap();
+    let mut right_buff = [0u8; 4];
+    let bytes = read(re_read, &mut right_buff).unwrap();
+    if bytes == 4 {
+        let _ = kill(left_pid, nix::sys::signal::SIGKILL);
+        let error = i32::from_ne_bytes(right_buff);
+        return Err(status::ShellError::Exec(Errno::from_raw(error)));
+    }
+    dup2_stdin(saved_stdin).expect("couldn't restore stdin!");
+    dup2_stdout(saved_stdout).expect("couldn't restore stdout!");
+    match res {
+        WaitStatus::Exited(_, code) => return Ok(status::Returns::Code(code)),
+        WaitStatus::Signaled(_, signal , _) => return Ok(status::Returns::ShellSignal(signal)),
+        _ => return  Ok(status::Returns::Code(0))
+    }
 }
