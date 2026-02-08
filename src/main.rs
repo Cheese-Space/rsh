@@ -1,5 +1,5 @@
 use std::{io::{self, Write}, process::ExitCode};
-use nix::unistd::{User, getuid, gethostname};
+use nix::unistd::{User, gethostname, getuid};
 use termion::color;
 mod exec;
 mod parse;
@@ -52,7 +52,17 @@ fn main() -> ExitCode {
             }
             Err(val) => {
                 eprintln!("{}", val);
-                return_code = 1;
+                if let status::ShellError::Exec(error) = val {
+                    if error == nix::errno::Errno::ENOENT {
+                        return_code = 127;
+                    }
+                    else {
+                        return_code = 126;
+                    }
+                }
+                else {
+                    return_code = 1;
+                }
             }
         }
     }
