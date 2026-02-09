@@ -4,6 +4,7 @@ pub enum ShellError {
     Fork(nix::errno::Errno),
     IO(nix::errno::Errno),
     Exec(nix::errno::Errno),
+    Pipe(nix::errno::Errno),
     DupStdout(nix::errno::Errno, String),
     DupStdin(nix::errno::Errno, String),
     NoArg,
@@ -18,7 +19,8 @@ impl std::fmt::Display for ShellError {
             ShellError::CStringNullByte => write!(f, "error: null byte found before end of string"),
             ShellError::DupStdout(error, filename) => write!(f, "error: {}\nfailed to redirect stdout to '{}'", error.desc(), filename),
             ShellError::DupStdin(error, filename) => write!(f, "error: {}\nfailed to redirect stdin to '{}'", error.desc(), filename),
-            ShellError::Exec(error) => write!(f, "error: {}", error.desc())
+            ShellError::Exec(error) => write!(f, "error: {}", error.desc()),
+            ShellError::Pipe(error) => write!(f, "error: {}", error.desc())
         }
     }
 }
