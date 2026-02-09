@@ -57,10 +57,7 @@ pub fn execute(arguments: Vec<CString>) -> status::ShellResult {
     exec_extern(&arguments)
 }
 fn exec_extern(arguments: &[CString]) -> status::ShellResult {
-    let (e_read, e_write) = match pipe() {
-        Ok(p) => p,
-        Err(error) => return Err(status::ShellError::Pipe(error))
-    };
+    let (e_read, e_write) = pipe().map_err(|error| status::ShellError::Pipe(error))?;
     fcntl::fcntl(&e_write, fcntl::FcntlArg::F_SETFD(fcntl::FdFlag::FD_CLOEXEC)).unwrap();
     unsafe { // note that all libc functions (and fork) are 'unsafe', but won't cause undefined behavior in this code
         match fork() {
@@ -121,13 +118,8 @@ fn exec_redirect(arguments: &[CString], filename: &str, overwrite: bool) -> stat
     if overwrite {
         flags = fcntl::OFlag::O_WRONLY | fcntl::OFlag::O_CREAT | fcntl::OFlag::O_TRUNC | fcntl::OFlag::O_CLOEXEC;
     }
-    let file = match fcntl::open(filename, flags, Mode::S_IWUSR | Mode::S_IRUSR) {
-        Ok(f) => f,
-        Err(error) => return Err(status::ShellError::IO(error))
-    };
-    if let Err(error) = dup2_stdout(file) {
-        return Err(status::ShellError::DupStdout(error, filename.to_string()));
-    }
+    let file = fcntl::open(filename, flags, Mode::S_IWUSR | Mode::S_IRUSR).map_err(|error| status::ShellError::IO(error))?;
+    dup2_stdout(file).map_err(|error| status::ShellError::DupStdout(error, filename.to_string()))?;
     let res = exec_extern(arguments);
     dup2_stdout(saved_stdout).expect("couldn't restore stdout!");
     res
@@ -135,13 +127,8 @@ fn exec_redirect(arguments: &[CString], filename: &str, overwrite: bool) -> stat
 fn exec_file_as_stdin(arguments: &[CString], filename: &str) -> status::ShellResult {
     let stdin = io::stdin();
     let saved_stdin = dup(&stdin).unwrap();
-    let file = match fcntl::open(filename, fcntl::OFlag::O_RDONLY | fcntl::OFlag::O_CLOEXEC, Mode::empty()) {
-        Ok(f) => f,
-        Err(error) => return Err(status::ShellError::IO(error))
-    };
-    if let Err(error) = dup2_stdin(file) {
-        return Err(status::ShellError::DupStdin(error, filename.to_string()));
-    }
+    let file = fcntl::open(filename, fcntl::OFlag::O_RDONLY | fcntl::OFlag::O_CLOEXEC, Mode::empty()).map_err(|error| status::ShellError::IO(error))?;
+    dup2_stdin(file).map_err(|error| status::ShellError::DupStdin(error, filename.to_string()))?;
     let res = exec_extern(arguments);
     dup2_stdin(saved_stdin).expect("couldn't restore stdin!");
     res
@@ -149,20 +136,11 @@ fn exec_file_as_stdin(arguments: &[CString], filename: &str) -> status::ShellRes
 fn exec_pipe(args1: &[CString], args2: &[CString]) -> status::ShellResult {
     let saved_stdin = dup(io::stdin()).unwrap();
     let saved_stdout = dup(io::stdout()).unwrap();
-    let (le_read, le_write) = match pipe() {
-        Ok(p) => p,
-        Err(error) => return Err(status::ShellError::Pipe(error))
-    };
-    let (re_read, re_write) = match pipe() {
-        Ok(p) => p,
-        Err(error) => return Err(status::ShellError::Pipe(error))
-    };
+    let (le_read, le_write) = pipe().map_err(|error| status::ShellError::Pipe(error))?;
+    let (re_read, re_write) =  pipe().map_err(|error| status::ShellError::Pipe(error))?;
     fcntl::fcntl(&le_write, fcntl::FcntlArg::F_SETFD(fcntl::FdFlag::FD_CLOEXEC)).unwrap();
     fcntl::fcntl(&re_write, fcntl::FcntlArg::F_SETFD(fcntl::FdFlag::FD_CLOEXEC)).unwrap();
-    let (read_fd, write_fd) = match pipe() {
-        Ok(p) => p,
-        Err(error) => return Err(status::ShellError::Pipe(error))
-    };
+    let (read_fd, write_fd) =  pipe().map_err(|error| status::ShellError::Pipe(error))?;
     let left_pid: Pid = match unsafe {fork()} {
         Ok(ForkResult::Child) => {
             drop(read_fd);

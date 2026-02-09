@@ -8,8 +8,6 @@ pub fn version() -> Returns {
     Returns::Code(0)
 }
 pub fn cd(dir: &str) -> ShellResult {
-    match unistd::chdir(dir) {
-        Ok(()) => Ok(Returns::Code(0)),
-        Err(error) => Err(ShellError::IO(error))
-    }
+    unistd::chdir(dir).map_err(|error| ShellError::IO(error))?;
+    Ok(Returns::Code(0))
 }
