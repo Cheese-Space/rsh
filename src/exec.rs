@@ -57,7 +57,10 @@ pub fn execute(arguments: Vec<CString>) -> status::ShellResult {
     exec_extern(&arguments)
 }
 fn exec_extern(arguments: &[CString]) -> status::ShellResult {
-    let (e_read, e_write) = pipe().unwrap();
+    let (e_read, e_write) = match pipe() {
+        Ok(p) => p,
+        Err(error) => return Err(status::ShellError::Pipe(error))
+    };
     fcntl::fcntl(&e_write, fcntl::FcntlArg::F_SETFD(fcntl::FdFlag::FD_CLOEXEC)).unwrap();
     unsafe { // note that all libc functions (and fork) are 'unsafe', but won't cause undefined behavior in this code
         match fork() {
@@ -146,11 +149,20 @@ fn exec_file_as_stdin(arguments: &[CString], filename: &str) -> status::ShellRes
 fn exec_pipe(args1: &[CString], args2: &[CString]) -> status::ShellResult {
     let saved_stdin = dup(io::stdin()).unwrap();
     let saved_stdout = dup(io::stdout()).unwrap();
-    let (le_read, le_write) = pipe().unwrap();
-    let (re_read, re_write) = pipe().unwrap();
+    let (le_read, le_write) = match pipe() {
+        Ok(p) => p,
+        Err(error) => return Err(status::ShellError::Pipe(error))
+    };
+    let (re_read, re_write) = match pipe() {
+        Ok(p) => p,
+        Err(error) => return Err(status::ShellError::Pipe(error))
+    };
     fcntl::fcntl(&le_write, fcntl::FcntlArg::F_SETFD(fcntl::FdFlag::FD_CLOEXEC)).unwrap();
     fcntl::fcntl(&re_write, fcntl::FcntlArg::F_SETFD(fcntl::FdFlag::FD_CLOEXEC)).unwrap();
-    let (read_fd, write_fd) = pipe().unwrap();
+    let (read_fd, write_fd) = match pipe() {
+        Ok(p) => p,
+        Err(error) => return Err(status::ShellError::Pipe(error))
+    };
     let left_pid: Pid = match unsafe {fork()} {
         Ok(ForkResult::Child) => {
             drop(read_fd);
@@ -214,6 +226,6 @@ fn exec_pipe(args1: &[CString], args2: &[CString]) -> status::ShellResult {
     match res {
         WaitStatus::Exited(_, code) => return Ok(status::Returns::Code(code)),
         WaitStatus::Signaled(_, signal , _) => return Ok(status::Returns::ShellSignal(signal)),
-        _ => return  Ok(status::Returns::Code(0))
+        _ => return Ok(status::Returns::Code(0))
     }
 }
