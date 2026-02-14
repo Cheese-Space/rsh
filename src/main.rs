@@ -1,5 +1,5 @@
 use std::{io::{self, Write}, process::ExitCode};
-use nix::{sys::signal::Signal, unistd::{User, gethostname, getuid}};
+use nix::{sys::signal::{Signal, signal}, unistd::{User, gethostname, getuid}};
 use termion::color;
 mod exec;
 mod parse;
@@ -7,6 +7,12 @@ mod status;
 mod builtin;
 mod config;
 fn main() -> ExitCode {
+    unsafe {
+        signal(Signal::SIGINT, nix::sys::signal::SigHandler::SigIgn).unwrap();
+        signal(Signal::SIGPIPE, nix::sys::signal::SigHandler::SigIgn).unwrap();
+        signal(Signal::SIGTTOU, nix::sys::signal::SigHandler::SigIgn).unwrap();
+        signal(Signal::SIGTTIN, nix::sys::signal::SigHandler::SigIgn).unwrap();
+    }
     let conf = config::Conf::read_conf();
     let user_info = User::from_uid(getuid()).unwrap().unwrap();
     let username = user_info.name;

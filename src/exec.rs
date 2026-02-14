@@ -4,15 +4,29 @@ use std::ffi::CString;
 use std::process::exit;
 use std::io;
 use nix::errno::Errno;
-use nix::sys::signal::kill;
+use nix::fcntl::OFlag;
+use nix::fcntl::open;
+use nix::sys::signal::Signal::SIGTERM;
 use nix::sys::signal::killpg;
+use nix::sys::signal::signal;
 use nix::unistd::Pid;
+use nix::unistd::getpid;
 use nix::unistd::pipe;
 use nix::fcntl::{self};
 use nix::unistd::setpgid;
+use nix::unistd::tcsetpgrp;
 use nix::unistd::write;
-use nix::{sys::{wait::{waitpid, WaitStatus}, signal, stat::Mode}, unistd::{read, execvp, fork, ForkResult, dup, dup2_stdout, dup2_stdin}};
+use nix::sys::signal::Signal;
+use nix::{sys::{wait::{waitpid, WaitStatus}, stat::Mode}, unistd::{read, execvp, fork, ForkResult, dup, dup2_stdout, dup2_stdin}};
 const BUILTIN: [&str; 4] = ["exit", "ver", "cd", "mkconf"];
+macro_rules! set_sig_to_def {
+    () => {
+        signal(Signal::SIGINT, nix::sys::signal::SigHandler::SigDfl).unwrap();
+        signal(Signal::SIGPIPE, nix::sys::signal::SigHandler::SigDfl).unwrap();
+        signal(Signal::SIGTTOU, nix::sys::signal::SigHandler::SigDfl).unwrap();
+        signal(Signal::SIGTTIN, nix::sys::signal::SigHandler::SigDfl).unwrap();
+    };
+}
 pub fn execute(arguments: Vec<CString>) -> status::ShellResult {
     for i in BUILTIN {
         if i == arguments[0].to_str().unwrap() {
@@ -82,6 +96,7 @@ fn exec_extern(arguments: &[CString]) -> status::ShellResult {
             }
             Ok(ForkResult::Child) => {
                 drop(e_read);
+                set_sig_to_def!();
                 match execvp(&arguments[0], arguments) {
                     Err(error) => {
                         let error = error as i32;
@@ -149,7 +164,9 @@ fn exec_pipe(args1: &[CString], args2: &[CString]) -> status::ShellResult {
             drop(le_read);
             dup2_stdout(&write_fd).unwrap();
             drop(write_fd);
-            unsafe { signal::signal(signal::Signal::SIGPIPE, signal::SigHandler::SigDfl).unwrap() };
+            unsafe {
+                set_sig_to_def!();
+            }
             setpgid(Pid::from_raw(0), Pid::from_raw(0)).unwrap();
             match execvp(&args1[0], args1) {
                 Err(error) => {
@@ -163,14 +180,16 @@ fn exec_pipe(args1: &[CString], args2: &[CString]) -> status::ShellResult {
         Ok(ForkResult::Parent { child }) => child,
         Err(error) => return Err(status::ShellError::Fork(error))
     };
-    let right_pid: Pid = match unsafe {fork()} {
+    match unsafe {fork()} {
         Ok(ForkResult::Child) => {
             drop(write_fd);
             drop(re_read);
             dup2_stdin(&read_fd).unwrap();
             drop(read_fd);
             setpgid(Pid::from_raw(0), left_pid).unwrap();
-            unsafe { signal::signal(signal::Signal::SIGPIPE, signal::SigHandler::SigDfl).unwrap() };
+            unsafe {
+                set_sig_to_def!();
+            }
             match execvp(&args2[0], args2) {
                 Err(error) => {
                     let error = error as i32;
@@ -180,34 +199,41 @@ fn exec_pipe(args1: &[CString], args2: &[CString]) -> status::ShellResult {
                 }
             }
         }
-        Ok(ForkResult::Parent { child }) => child,
-        Err(error) => return Err(status::ShellError::Fork(error))
+        Err(error) => return Err(status::ShellError::Fork(error)),
+        _ => ()
     };
     drop(read_fd);
     drop(write_fd);
     drop(le_write);
     drop(re_write);
-    waitpid(left_pid, None).unwrap();
+    let tty = open("/dev/tty", OFlag::O_RDWR, Mode::empty()).unwrap();
+    tcsetpgrp(&tty, left_pid).unwrap();
+    waitpid(Pid::from_raw(left_pid.as_raw() * -1), None).unwrap();
     let mut left_buff = [0u8; 4];
-    let bytes = read(le_read, &mut left_buff).unwrap();
-    if bytes == 4 {
-        let _ = killpg(left_pid, nix::sys::signal::SIGKILL).unwrap();
-        let error = i32::from_ne_bytes(left_buff);
-        return Err(status::ShellError::Exec(Errno::from_raw(error)));
-    }
-    let res = waitpid(right_pid, None).unwrap();
     let mut right_buff = [0u8; 4];
-    let bytes = read(re_read, &mut right_buff).unwrap();
-    if bytes == 4 {
-        let _ = killpg(left_pid, nix::sys::signal::SIGKILL);
-        let error = i32::from_ne_bytes(right_buff);
+    tcsetpgrp(&tty, getpid()).unwrap();
+    let lb = read(le_read, &mut left_buff).unwrap();
+    let rb = read(re_read, &mut right_buff).unwrap();
+    tcsetpgrp(&tty, left_pid).unwrap();
+    if lb == 4 {
+        let error = i32::from_ne_bytes(left_buff);
+        let _ = killpg(left_pid, SIGTERM);
+        tcsetpgrp(&tty, getpid()).unwrap();
         return Err(status::ShellError::Exec(Errno::from_raw(error)));
     }
+    else if rb == 4 {
+        let error = i32::from_ne_bytes(right_buff);
+        let _ = killpg(left_pid, SIGTERM);
+        tcsetpgrp(&tty, getpid()).unwrap();
+        return Err(status::ShellError::Exec(Errno::from_raw(error)));
+    }
+    let res = waitpid(Pid::from_raw(left_pid.as_raw() * -1), None).unwrap();
+    tcsetpgrp(&tty, getpid()).unwrap();
+    dup2_stdout(saved_stdout).expect("couldn't restore stdout");
     dup2_stdin(saved_stdin).expect("couldn't restore stdin!");
-    dup2_stdout(saved_stdout).expect("couldn't restore stdout!");
     match res {
-        WaitStatus::Exited(_, code) => return Ok(status::Returns::Code(code)),
-        WaitStatus::Signaled(_, signal , _) => return Ok(status::Returns::ShellSignal(signal)),
-        _ => return Ok(status::Returns::Code(0))
+        WaitStatus::Exited(_, code) => Ok(status::Returns::Code(code)),
+        WaitStatus::Signaled(_, sig, _) => Ok(status::Returns::ShellSignal(sig)),
+        _ => Ok(status::Returns::Code(0)),
     }
 }
