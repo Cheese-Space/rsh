@@ -1,5 +1,5 @@
 use std::{io::{self, Write}, process::ExitCode};
-use nix::unistd::{User, gethostname, getuid};
+use nix::{sys::signal::Signal, unistd::{User, gethostname, getuid}};
 use termion::color;
 mod exec;
 mod parse;
@@ -19,8 +19,12 @@ fn main() -> ExitCode {
         }
     };
     let mut return_code = 0;
+    let mut signal: Option<Signal> = None;
     loop {
-        if return_code == 0 {
+        if let Some(sig) = signal {
+            print!("{}{}{}@{} [{}{}{}] {} ", conf.usercolor, username, color::Fg(color::Reset), hostname, conf.errorcolor, sig, color::Fg(color::Reset), conf.separator);
+        }
+        else if  return_code == 0 {
             print!("{}{}{}@{} {} ", conf.usercolor, username, color::Fg(color::Reset), hostname, conf.separator);
         }
         else {
@@ -43,10 +47,9 @@ fn main() -> ExitCode {
                 match code {
                     status::Returns::Code(co) => {
                         return_code = co;
+                        signal = None;
                     }
-                    status::Returns::ShellSignal(sig) => {
-                        todo!();
-                    }
+                    status::Returns::ShellSignal(sig) => signal = Some(sig),
                     status::Returns::ExitSig => return ExitCode::SUCCESS
                 }
             }
@@ -63,6 +66,7 @@ fn main() -> ExitCode {
                 else {
                     return_code = 1;
                 }
+                signal = None;
             }
         }
     }
