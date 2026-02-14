@@ -28,6 +28,9 @@ fn main() -> ExitCode {
     let mut signal: Option<Signal> = None;
     loop {
         if let Some(sig) = signal {
+            if sig == Signal::SIGINT {
+                println!();
+            }
             print!("{}{}{}@{} [{}{}{}] {} ", conf.usercolor, username, color::Fg(color::Reset), hostname, conf.errorcolor, sig, color::Fg(color::Reset), conf.separator);
         }
         else if  return_code == 0 {
