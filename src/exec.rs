@@ -5,9 +5,11 @@ use std::process::exit;
 use std::io;
 use nix::errno::Errno;
 use nix::sys::signal::kill;
+use nix::sys::signal::killpg;
 use nix::unistd::Pid;
 use nix::unistd::pipe;
 use nix::fcntl::{self};
+use nix::unistd::setpgid;
 use nix::unistd::write;
 use nix::{sys::{wait::{waitpid, WaitStatus}, signal, stat::Mode}, unistd::{read, execvp, fork, ForkResult, dup, dup2_stdout, dup2_stdin}};
 const BUILTIN: [&str; 4] = ["exit", "ver", "cd", "mkconf"];
@@ -148,6 +150,7 @@ fn exec_pipe(args1: &[CString], args2: &[CString]) -> status::ShellResult {
             dup2_stdout(&write_fd).unwrap();
             drop(write_fd);
             unsafe { signal::signal(signal::Signal::SIGPIPE, signal::SigHandler::SigDfl).unwrap() };
+            setpgid(Pid::from_raw(0), Pid::from_raw(0)).unwrap();
             match execvp(&args1[0], args1) {
                 Err(error) => {
                     let error = error as i32;
@@ -166,6 +169,7 @@ fn exec_pipe(args1: &[CString], args2: &[CString]) -> status::ShellResult {
             drop(re_read);
             dup2_stdin(&read_fd).unwrap();
             drop(read_fd);
+            setpgid(Pid::from_raw(0), left_pid).unwrap();
             unsafe { signal::signal(signal::Signal::SIGPIPE, signal::SigHandler::SigDfl).unwrap() };
             match execvp(&args2[0], args2) {
                 Err(error) => {
@@ -187,7 +191,7 @@ fn exec_pipe(args1: &[CString], args2: &[CString]) -> status::ShellResult {
     let mut left_buff = [0u8; 4];
     let bytes = read(le_read, &mut left_buff).unwrap();
     if bytes == 4 {
-        kill(right_pid, nix::sys::signal::SIGKILL).unwrap();
+        let _ = killpg(left_pid, nix::sys::signal::SIGKILL).unwrap();
         let error = i32::from_ne_bytes(left_buff);
         return Err(status::ShellError::Exec(Errno::from_raw(error)));
     }
@@ -195,7 +199,7 @@ fn exec_pipe(args1: &[CString], args2: &[CString]) -> status::ShellResult {
     let mut right_buff = [0u8; 4];
     let bytes = read(re_read, &mut right_buff).unwrap();
     if bytes == 4 {
-        let _ = kill(left_pid, nix::sys::signal::SIGKILL);
+        let _ = killpg(left_pid, nix::sys::signal::SIGKILL);
         let error = i32::from_ne_bytes(right_buff);
         return Err(status::ShellError::Exec(Errno::from_raw(error)));
     }
