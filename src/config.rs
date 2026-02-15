@@ -14,7 +14,7 @@ impl Conf {
         let mut separator = String::new();
         let mut buff = String::new();
         let mut stdin = io::stdin().lock();
-        println!("rsh-configurator ver 0.1.0\nusercolor:\n0 [default]: light green\n1: light blue\n2: light cyan\n3: light yellow\n4: terminal default");
+        println!("rsh-configurator ver 0.1.1\nusercolor:\n0 [default]: {}light green{}\n1: {}light blue{}\n2: {}light cyan{}\n3: {}light yellow{}\n4: terminal default", color::Fg(color::LightGreen), color::Fg(color::Reset), color::Fg(color::LightBlue), color::Fg(color::Reset), color::Fg(color::LightCyan), color::Fg(color::Reset), color::Fg(color::LightYellow), color::Fg(color::Reset));
         stdin.read_line(&mut buff).unwrap();
         match buff.trim() {
             "0" => ucolor.push_str(&color::Fg(color::LightGreen).to_string()),
@@ -25,7 +25,7 @@ impl Conf {
             _ => ucolor.push_str(&color::Fg(color::LightGreen).to_string())
         }
         buff.clear();
-        println!("errorcolor:\n0: [default]: light red\n1: red\n2: light magenta\n3: magenta\n4: terminal default");
+        println!("errorcolor:\n0: [default]: {}light red{}\n1: {}red{}\n2: {}light magenta{}\n3: {}magenta{}\n4: terminal default", color::Fg(color::LightRed), color::Fg(color::Reset), color::Fg(color::Red), color::Fg(color::Reset), color::Fg(color::LightMagenta), color::Fg(color::Reset), color::Fg(color::Magenta), color::Fg(color::Reset));
         stdin.read_line(&mut buff).unwrap();
         match buff.trim() {
             "0" => ecolor.push_str(&color::Fg(color::LightRed).to_string()),
