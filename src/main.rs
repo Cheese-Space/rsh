@@ -1,5 +1,6 @@
-use std::{io::{self, Write}, process::ExitCode};
+use std::process::ExitCode;
 use nix::{sys::signal::{Signal, signal}, unistd::{User, gethostname, getuid}};
+use rustyline::{DefaultEditor, error::ReadlineError};
 use termion::color;
 mod exec;
 mod parse;
@@ -26,24 +27,39 @@ fn main() -> ExitCode {
     };
     let mut return_code = 0;
     let mut signal: Option<Signal> = None;
+    let mut rl = DefaultEditor::new().unwrap();
     loop {
+        let readline: Result<String, ReadlineError>;
         if let Some(sig) = signal {
             if sig == Signal::SIGINT {
                 println!();
             }
-            print!("{}{}{}@{} [{}{}{}] {} ", conf.usercolor, username, color::Fg(color::Reset), hostname, conf.errorcolor, sig, color::Fg(color::Reset), conf.separator);
+            readline = rl.readline(&format!("{}{}{}@{} [{}{}{}] {} ", conf.usercolor, username, color::Fg(color::Reset), hostname, conf.errorcolor, sig, color::Fg(color::Reset), conf.separator));
         }
         else if  return_code == 0 {
-            print!("{}{}{}@{} {} ", conf.usercolor, username, color::Fg(color::Reset), hostname, conf.separator);
+            readline = rl.readline(&format!("{}{}{}@{} {} ", conf.usercolor, username, color::Fg(color::Reset), hostname, conf.separator));
         }
         else {
-            print!("{}{}{}@{} [{}{}{}] {} ", conf.usercolor, username, color::Fg(color::Reset), hostname, conf.errorcolor, return_code, color::Fg(color::Reset), conf.separator);
+            readline = rl.readline(&format!("{}{}{}@{} [{}{}{}] {} ", conf.usercolor, username, color::Fg(color::Reset), hostname, conf.errorcolor, return_code, color::Fg(color::Reset), conf.separator));
         }
-        io::stdout().flush().unwrap();
-        let input = parse::parse_input();
+        let input = match readline {
+            Ok(s) => {
+                rl.add_history_entry(s.as_str()).unwrap();
+                s
+            }
+            Err(ReadlineError::Interrupted) => continue,
+            Err(ReadlineError::Eof) => {
+                eprintln!("reached EOF"); 
+                break;
+            }
+            Err(err) => {
+                eprintln!("{:?}", err); 
+                continue;
+            }
+        };
         if input.trim().is_empty() {
             continue;
-        } 
+        }
         let args = match parse::split_input(&input) {
             Ok(s) => s,
             Err(_) => {
@@ -79,4 +95,5 @@ fn main() -> ExitCode {
             }
         }
     }
+    ExitCode::FAILURE
 }
