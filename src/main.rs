@@ -29,34 +29,7 @@ fn main() -> ExitCode {
     let mut signal: Option<Signal> = None;
     let mut rl = DefaultEditor::new().unwrap();
     loop {
-        let readline: Result<String, ReadlineError>;
-        if let Some(sig) = signal {
-            if sig == Signal::SIGINT {
-                println!();
-            }
-            readline = rl.readline(&format!("{}{}{}@{} [{}{}{}] {} ", conf.usercolor, username, color::Fg(color::Reset), hostname, conf.errorcolor, sig, color::Fg(color::Reset), conf.separator));
-        }
-        else if  return_code == 0 {
-            readline = rl.readline(&format!("{}{}{}@{} {} ", conf.usercolor, username, color::Fg(color::Reset), hostname, conf.separator));
-        }
-        else {
-            readline = rl.readline(&format!("{}{}{}@{} [{}{}{}] {} ", conf.usercolor, username, color::Fg(color::Reset), hostname, conf.errorcolor, return_code, color::Fg(color::Reset), conf.separator));
-        }
-        let input = match readline {
-            Ok(s) => {
-                rl.add_history_entry(s.as_str()).unwrap();
-                s
-            }
-            Err(ReadlineError::Interrupted) => continue,
-            Err(ReadlineError::Eof) => {
-                eprintln!("reached EOF"); 
-                break;
-            }
-            Err(err) => {
-                eprintln!("{:?}", err); 
-                continue;
-            }
-        };
+        let input = get_input!(conf, username, hostname, signal, return_code, rl);
         if input.trim().is_empty() {
             continue;
         }
