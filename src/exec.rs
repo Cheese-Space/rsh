@@ -18,7 +18,8 @@ use nix::unistd::tcsetpgrp;
 use nix::unistd::write;
 use nix::sys::signal::Signal;
 use nix::{sys::{wait::{waitpid, WaitStatus}, stat::Mode}, unistd::{read, execvp, fork, ForkResult, dup, dup2_stdout, dup2_stdin}};
-const BUILTIN: [&str; 4] = ["exit", "ver", "cd", "mkconf"];
+use rustyline::DefaultEditor;
+const BUILTIN: [&str; 5] = ["exit", "ver", "cd", "mkconf", "history"];
 macro_rules! set_sig_to_def {
     () => {
         signal(Signal::SIGINT, nix::sys::signal::SigHandler::SigDfl).unwrap();
@@ -27,10 +28,10 @@ macro_rules! set_sig_to_def {
         signal(Signal::SIGTTIN, nix::sys::signal::SigHandler::SigDfl).unwrap();
     };
 }
-pub fn execute(arguments: Vec<CString>) -> status::ShellResult {
+pub fn execute(arguments: Vec<CString>, line_editor: &DefaultEditor) -> status::ShellResult {
     for i in BUILTIN {
         if i == arguments[0].to_str().unwrap() {
-            return exec_intern(i, &arguments);
+            return exec_intern(i, &arguments, line_editor);
         }
     }
     for (i, j) in arguments.iter().enumerate() {
@@ -111,7 +112,7 @@ fn exec_extern(arguments: &[CString]) -> status::ShellResult {
         }
     }
 }
-fn exec_intern(func: &str, args:&[CString]) -> status::ShellResult {
+fn exec_intern(func: &str, args:&[CString], line_editor: &DefaultEditor) -> status::ShellResult {
     match func {
         "exit" => Ok(builtin::exit()),
         "ver" => Ok(builtin::version()),
@@ -124,6 +125,9 @@ fn exec_intern(func: &str, args:&[CString]) -> status::ShellResult {
         "mkconf" => {
             crate::config::Conf::make_conf();
             Ok(status::Returns::Code(0))
+        }
+        "history" => {
+            Ok(builtin::history(line_editor))
         }
         _ => unreachable!()
     }

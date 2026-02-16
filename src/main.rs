@@ -67,7 +67,7 @@ fn main() -> ExitCode {
                 continue;
             }
         };
-        match exec::execute(args) {
+        match exec::execute(args, &rl) {
             Ok(code) => {
                 match code {
                     status::Returns::Code(co) => {
