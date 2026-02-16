@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 nix = {version = "0.31.1", features = ["process", "dir", "user", "hostname", "fs", "signal", "term"]}
+rustyline = "17.0.2"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 termion = "4.0.6"
