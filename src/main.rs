@@ -1,6 +1,6 @@
 use std::process::ExitCode;
 use nix::{sys::signal::{Signal, signal}, unistd::{User, gethostname, getuid}};
-use rustyline::{DefaultEditor, error::ReadlineError};
+use rustyline::{DefaultEditor, config::Configurer, error::ReadlineError};
 use termion::color;
 mod exec;
 mod parse;
@@ -28,6 +28,8 @@ fn main() -> ExitCode {
     let mut return_code = 0;
     let mut signal: Option<Signal> = None;
     let mut rl = DefaultEditor::new().unwrap();
+    rl.set_max_history_size(500).unwrap();
+    let _ = rl.load_history("/usr/local/etc/.rsh_history");
     loop {
         let input = get_input!(conf, username, hostname, signal, return_code, rl);
         if input.trim().is_empty() {
@@ -48,7 +50,10 @@ fn main() -> ExitCode {
                         signal = None;
                     }
                     status::Returns::ShellSignal(sig) => signal = Some(sig),
-                    status::Returns::ExitSig => return ExitCode::SUCCESS
+                    status::Returns::ExitSig => {
+                        rl.save_history("/usr/local/etc/.rsh_history").unwrap();
+                        return ExitCode::SUCCESS;
+                    }
                 }
             }
             Err(val) => {
@@ -68,5 +73,6 @@ fn main() -> ExitCode {
             }
         }
     }
+    rl.save_history("/usr/local/etc/.rsh_history").unwrap();
     ExitCode::FAILURE
 }
