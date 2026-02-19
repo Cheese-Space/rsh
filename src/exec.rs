@@ -68,6 +68,14 @@ pub fn execute(arguments: Vec<CString>, line_editor: &DefaultEditor) -> status::
                 let args2 = &arguments[i+1..];
                 return exec_pipe(args1, args2);
             }
+            b"&&" => {
+                let args1 = &arguments[..i];
+                if let None = arguments.get(i+1) {
+                    return Err(status::ShellError::NoArg);
+                }
+                let args2 = &arguments[i+1..];
+                return exec_and(args1, args2);
+            }
             _ => ()
         }
     }
@@ -248,4 +256,11 @@ fn exec_pipe(args1: &[CString], args2: &[CString]) -> status::ShellResult {
         WaitStatus::Signaled(_, sig, _) => Ok(status::Returns::ShellSignal(sig)),
         _ => Ok(status::Returns::Code(0)),
     }
+}
+fn exec_and(args1: &[CString], args2: &[CString]) -> status::ShellResult {
+    let res = exec_extern(args1);
+    if let Ok(status::Returns::Code(0)) = res {
+        return exec_extern(args2);
+    }
+    res
 }
