@@ -28,18 +28,17 @@ macro_rules! set_sig_to_def {
         signal(Signal::SIGTTIN, nix::sys::signal::SigHandler::SigDfl).unwrap();
     };
 }
-fn check_builtin(args: &[CString]) -> (bool, Option<&str>) {
+fn check_builtin(args: &[CString]) -> Option<&str> {
     for i in BUILTIN {
         if args[0].to_str().unwrap() == i {
-            return (true, Some(i));
+            return Some(i)
         }
     }
-    return (false, None);
+    return None;
 }
 pub fn execute(arguments: Vec<CString>, line_editor: &DefaultEditor) -> status::ShellResult {
-    let (res, builtin) = check_builtin(&arguments);
-    if res == true {
-        return exec_intern(builtin.unwrap(), &arguments, line_editor);
+    if let Some(builtin) = check_builtin(&arguments) {
+        return exec_intern(builtin, &arguments, line_editor);
     }
     for (i, j) in arguments.iter().enumerate() {
         match j.as_bytes() {
