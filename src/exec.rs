@@ -80,7 +80,15 @@ fn exec_extern(arguments: &[CString]) -> status::ShellResult {
         match fork() {
             Ok(ForkResult::Parent { child }) => {
                 drop(e_write);
-                let res = waitpid(child, None).unwrap();
+                let res: WaitStatus = loop {
+                    let res = waitpid(child, None);
+                    if let Err(Errno::EINTR) = res {
+                        continue;
+                    }
+                    else if let Ok(val) = res {
+                        break val;
+                    }
+                };
                 let mut buff = [0u8; 4];
                 let bytes = read(e_read, &mut buff).unwrap();
                 if bytes == 4 {
