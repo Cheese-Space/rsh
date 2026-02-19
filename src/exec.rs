@@ -19,7 +19,7 @@ use nix::unistd::write;
 use nix::sys::signal::Signal;
 use nix::{sys::{wait::{waitpid, WaitStatus}, stat::Mode}, unistd::{read, execvp, fork, ForkResult, dup, dup2_stdout, dup2_stdin}};
 use rustyline::DefaultEditor;
-const BUILTIN: [&str; 5] = ["exit", "ver", "cd", "mkconf", "history"];
+use std::collections::HashMap;
 macro_rules! set_sig_to_def {
     () => {
         signal(Signal::SIGINT, nix::sys::signal::SigHandler::SigDfl).unwrap();
@@ -28,13 +28,25 @@ macro_rules! set_sig_to_def {
         signal(Signal::SIGTTIN, nix::sys::signal::SigHandler::SigDfl).unwrap();
     };
 }
-fn check_builtin(args: &[CString]) -> Option<&str> {
-    for i in BUILTIN {
-        if args[0].to_str().unwrap() == i {
-            return Some(i)
-        }
+macro_rules! builtins {
+    () => {{
+        let mut builtin: HashMap<String, u8> = HashMap::new();
+        builtin.insert("exit".to_string(), 0);
+        builtin.insert("ver".to_string(), 1);
+        builtin.insert("cd".to_string(), 2);
+        builtin.insert("mkconf".to_string(), 3);
+        builtin.insert("history".to_string(), 4);
+        builtin
+    }};
+}
+fn check_builtin(args: &[CString]) -> Option<u8> {
+    let builtins = builtins!();
+    if let Some(id) = builtins.get(args[0].to_str().unwrap()) {
+        Some(id.clone())
     }
-    return None;
+    else {
+        None
+    }
 }
 pub fn execute(arguments: Vec<CString>, line_editor: &DefaultEditor) -> status::ShellResult {
     if let Some(builtin) = check_builtin(&arguments) {
@@ -134,21 +146,21 @@ fn exec_extern(arguments: &[CString]) -> status::ShellResult {
         }
     }
 }
-fn exec_intern(func: &str, args:&[CString], line_editor: &DefaultEditor) -> status::ShellResult {
+fn exec_intern(func: u8, args:&[CString], line_editor: &DefaultEditor) -> status::ShellResult {
     match func {
-        "exit" => Ok(builtin::exit()),
-        "ver" => Ok(builtin::version()),
-        "cd" => {
+        0 => Ok(builtin::exit()),
+        1 => Ok(builtin::version()),
+        2 => {
             if args.len() < 2 {
                 return Err(status::ShellError::NoArg);
             }
             builtin::cd(args[1].to_str().unwrap())
         }
-        "mkconf" => {
+        3 => {
             crate::config::Conf::make_conf();
             Ok(status::Returns::Code(0))
         }
-        "history" => {
+        4 => {
             Ok(builtin::history(line_editor))
         }
         _ => unreachable!()
